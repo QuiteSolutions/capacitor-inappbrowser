@@ -30,6 +30,7 @@ import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -292,6 +293,8 @@ public class WebViewDialog extends Dialog {
     }
 
     getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    // Apply immersive mode to hide navigation bar only (after layout is ready)
+    getWindow().getDecorView().post(() -> applyNavBarImmersive());
 
     // Make status bar transparent
     if (getWindow() != null) {
@@ -999,6 +1002,92 @@ public class WebViewDialog extends Dialog {
     if (!this._options.isPresentAfterPageLoad()) {
       show();
       _options.getPluginCall().resolve();
+    }
+  }
+
+  /**
+   * Ensures the navigation bar is hidden (status bar remains visible),
+   * and restores immersive behavior after transient reveals.
+   */
+  private void applyNavBarImmersive() {
+    try {
+      if (getWindow() == null) return;
+
+      // Use compat controller to support API 30+
+      WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(
+        getWindow(),
+        getWindow().getDecorView()
+      );
+      controller.hide(WindowInsetsCompat.Type.navigationBars());
+      controller.setSystemBarsBehavior(
+        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      );
+
+      // Legacy flags for older behaviors if needed
+      if (Build.VERSION.SDK_INT < 30) {
+        int flags =
+          View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+          View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+          View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+          View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+      }
+    } catch (Exception e) {
+      Log.e("InAppBrowser", "applyNavBarImmersive error: " + e.getMessage());
+    }
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    applyNavBarImmersive();
+  }
+
+  @Override
+  public void onWindowFocusChanged(boolean hasFocus) {
+    super.onWindowFocusChanged(hasFocus);
+    if (hasFocus) {
+      applyNavBarImmersive();
+    }
+  }
+
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event) {
+    // Allow short press volume to behave normally, but track for long press
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      event.startTracking();
+      return false; // let system handle short press (volume change)
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
+  @Override
+  public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+    try {
+      if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+        // Close the WebView dialog and notify listeners
+        closeAndNotify();
+        return true;
+      } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+        // Reload current page
+        reload();
+        return true;
+      }
+    } catch (Exception e) {
+      Log.e("InAppBrowser", "onKeyLongPress error: " + e.getMessage());
+    }
+    return super.onKeyLongPress(keyCode, event);
+  }
+
+  private void closeAndNotify() {
+    try {
+      String currentUrl = _webView != null ? _webView.getUrl() : "";
+      dismiss();
+      if (_options != null && _options.getCallbacks() != null) {
+        _options.getCallbacks().closeEvent(currentUrl);
+      }
+    } catch (Exception e) {
+      Log.e("InAppBrowser", "closeAndNotify error: " + e.getMessage());
     }
   }
 
