@@ -1038,8 +1038,8 @@ public class WebViewDialog extends Dialog {
   }
 
   @Override
-  protected void onResume() {
-    super.onResume();
+  public void onAttachedToWindow() {
+    super.onAttachedToWindow();
     applyNavBarImmersive();
   }
 
