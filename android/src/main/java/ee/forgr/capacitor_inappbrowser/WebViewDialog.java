@@ -31,6 +31,8 @@ import android.util.Base64;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.KeyEvent;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -107,6 +109,12 @@ public class WebViewDialog extends Dialog {
   private Toolbar _toolbar;
   private Options _options = null;
   private final Context _context;
+  
+  // Volume key tracking
+  private Handler _volumeKeyHandler = new Handler(Looper.getMainLooper());
+  private Runnable _volumeUpLongPressRunnable = null;
+  private Runnable _volumeDownLongPressRunnable = null;
+  private static final int LONG_PRESS_DELAY = 800; // 800ms for long press
   public Activity activity;
   private boolean isInitialized = false;
   private boolean datePickerInjected = false; // Track if we've injected date picker fixes
@@ -1032,6 +1040,27 @@ public class WebViewDialog extends Dialog {
           View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
         getWindow().getDecorView().setSystemUiVisibility(flags);
       }
+      
+      // Force immediate re-hiding for faster response
+      getWindow().getDecorView().post(() -> {
+        try {
+          if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsControllerCompat controller2 = new WindowInsetsControllerCompat(
+              getWindow(),
+              getWindow().getDecorView()
+            );
+            controller2.hide(WindowInsetsCompat.Type.navigationBars());
+          } else {
+            int flags = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+              View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+              View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+              View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+          }
+        } catch (Exception e) {
+          Log.e("InAppBrowser", "Force re-hide nav bar error: " + e.getMessage());
+        }
+      });
     } catch (Exception e) {
       Log.e("InAppBrowser", "applyNavBarImmersive error: " + e.getMessage());
     }
