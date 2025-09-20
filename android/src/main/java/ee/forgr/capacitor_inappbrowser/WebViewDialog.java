@@ -110,11 +110,11 @@ public class WebViewDialog extends Dialog {
   private Options _options = null;
   private final Context _context;
   
-  // Volume key tracking
+  // Volume key double-tap tracking
   private Handler _volumeKeyHandler = new Handler(Looper.getMainLooper());
-  private Runnable _volumeUpLongPressRunnable = null;
-  private Runnable _volumeDownLongPressRunnable = null;
-  private static final int LONG_PRESS_DELAY = 800; // 800ms for long press
+  private long _lastVolumeUpTime = 0;
+  private long _lastVolumeDownTime = 0;
+  private static final int DOUBLE_TAP_DELAY = 500; // 500ms window for double-tap
   public Activity activity;
   private boolean isInitialized = false;
   private boolean datePickerInjected = false; // Track if we've injected date picker fixes
@@ -1082,30 +1082,45 @@ public class WebViewDialog extends Dialog {
 
   @Override
   public boolean onKeyDown(int keyCode, KeyEvent event) {
-    // Allow short press volume to behave normally, but track for long press
-    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-      event.startTracking();
-      return false; // let system handle short press (volume change)
-    }
-    return super.onKeyDown(keyCode, event);
-  }
-
-  @Override
-  public boolean onKeyLongPress(int keyCode, KeyEvent event) {
-    try {
-      if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-        // Close the WebView dialog and notify listeners
-        closeAndNotify();
-        return true;
-      } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-        // Reload current page
-        reload();
-        return true;
+    long currentTime = System.currentTimeMillis();
+    
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+      // Check for double-tap
+      if (currentTime - _lastVolumeUpTime < DOUBLE_TAP_DELAY) {
+        // Double-tap detected!
+        Log.d("InAppBrowser", "Volume Up double-tap detected - closing WebView");
+        try {
+          closeAndNotify();
+        } catch (Exception e) {
+          Log.e("InAppBrowser", "Volume Up double-tap error: " + e.getMessage());
+        }
+        _lastVolumeUpTime = 0; // Reset to prevent triple-tap
+        return true; // Consume the event
+      } else {
+        // First tap, record time
+        _lastVolumeUpTime = currentTime;
+        return false; // Let system handle volume change
       }
-    } catch (Exception e) {
-      Log.e("InAppBrowser", "onKeyLongPress error: " + e.getMessage());
+    } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      // Check for double-tap
+      if (currentTime - _lastVolumeDownTime < DOUBLE_TAP_DELAY) {
+        // Double-tap detected!
+        Log.d("InAppBrowser", "Volume Down double-tap detected - reloading page");
+        try {
+          reload();
+        } catch (Exception e) {
+          Log.e("InAppBrowser", "Volume Down double-tap error: " + e.getMessage());
+        }
+        _lastVolumeDownTime = 0; // Reset to prevent triple-tap
+        return true; // Consume the event
+      } else {
+        // First tap, record time
+        _lastVolumeDownTime = currentTime;
+        return false; // Let system handle volume change
+      }
     }
-    return super.onKeyLongPress(keyCode, event);
+    
+    return super.onKeyDown(keyCode, event);
   }
 
   private void closeAndNotify() {
